@@ -1,11 +1,11 @@
 FROM wordpress:php8.2-fpm-alpine
 
-# Install system dependencies
+# Install system dependencies (remplacer mysql-client par mariadb-connector-c)
 RUN apk add --no-cache \
     bash \
     curl \
     less \
-    mysql-client \
+    mariadb-client \
     vim \
     && rm -rf /var/cache/apk/*
 
