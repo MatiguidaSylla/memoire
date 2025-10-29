@@ -1,0 +1,168 @@
+name: CI/CD Pipeline - Build, Scan & Push
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOCKER_USERNAME: matiguida
+  REGISTRY: docker.io
+
+jobs:
+  # ========================================
+  # ÉTAPE 1 : CONSTRUIRE ET SCANNER FRONTEND
+  # ========================================
+  build-scan-push-frontend:
+    name: Frontend - Build, Scan & Push
+    runs-on: ubuntu-latest
+
+    steps:
+      # Récupérer votre code
+      - name:  Récupérer le code
+        uses: actions/checkout@v4
+
+      # Se connecter à Docker Hub
+      - name:  Connexion à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # Construire l'image Frontend
+      - name: Construire Frontend
+        run: |
+          echo "Construction de l'image frontend..."
+          docker build -t ${{ env.DOCKER_USERNAME }}/image:frontend-latest \
+                       -t ${{ env.DOCKER_USERNAME }}/image:frontend-${{ github.sha }} \
+                       ./frontend
+          echo " Frontend construit avec succès"
+
+      # Scanner l'image avec Trivy
+      - name:  Scanner Frontend (Vulnérabilités Critiques)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_USERNAME }}/image:frontend-latest
+          format: 'table'
+          output: 'trivy-frontend-report.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      # Afficher le résultat du scan
+      - name:  Afficher résultats Frontend
+        if: always()
+        run: |
+          echo "=================================="
+          echo "🔍 RÉSULTATS SCAN FRONTEND"
+          echo "=================================="
+          cat trivy-frontend-report.txt || echo "Aucune vulnérabilité détectée"
+          echo "=================================="
+
+      # Sauvegarder le rapport
+      - name:  Sauvegarder rapport Frontend
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: rapport-scan-frontend
+          path: trivy-frontend-report.txt
+          retention-days: 90
+
+      # Pousser sur Docker Hub
+      - name:  Pousser Frontend sur Docker Hub
+        run: |
+          echo "Envoi vers Docker Hub..."
+          docker push ${{ env.DOCKER_USERNAME }}/image:frontend-latest
+          docker push ${{ env.DOCKER_USERNAME }}/image:frontend-${{ github.sha }}
+          echo " Frontend publié sur Docker Hub"
+
+  # ========================================
+  # ÉTAPE 2 : CONSTRUIRE ET SCANNER BACKEND
+  # ========================================
+  build-scan-push-backend:
+    name: Backend - Build, Scan & Push
+    runs-on: ubuntu-latest
+    needs: build-scan-push-frontend
+
+    steps:
+      # Récupérer votre code
+      - name:  Récupérer le code
+        uses: actions/checkout@v4
+
+      # Se connecter à Docker Hub
+      - name:  Connexion à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # Construire l'image Backend
+      - name: Construire Backend
+        run: |
+          echo "Construction de l'image backend..."
+          docker build -t ${{ env.DOCKER_USERNAME }}/image:backend-latest \
+                       -t ${{ env.DOCKER_USERNAME }}/image:backend-${{ github.sha }} \
+                       ./backend
+          echo " Backend construit avec succès"
+
+      # Scanner l'image avec Trivy
+      - name: 🔍 Scanner Backend (Vulnérabilités Critiques)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_USERNAME }}/image:backend-latest
+          format: 'table'
+          output: 'trivy-backend-report.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      # Afficher le résultat du scan
+      - name: 📊 Afficher résultats Backend
+        if: always()
+        run: |
+          echo "=================================="
+          echo "🔍 RÉSULTATS SCAN BACKEND"
+          echo "=================================="
+          cat trivy-backend-report.txt || echo "Aucune vulnérabilité détectée"
+          echo "=================================="
+
+      # Sauvegarder le rapport
+      - name:  Sauvegarder rapport Backend
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: rapport-scan-backend
+          path: trivy-backend-report.txt
+          retention-days: 90
+
+      # Pousser sur Docker Hub
+      - name:  Pousser Backend sur Docker Hub
+        run: |
+          echo "Envoi vers Docker Hub..."
+          docker push ${{ env.DOCKER_USERNAME }}/image:backend-latest
+          docker push ${{ env.DOCKER_USERNAME }}/image:backend-${{ github.sha }}
+          echo " Backend publié sur Docker Hub"
+
+  # ========================================
+  # ÉTAPE 3 : RÉSUMÉ FINAL
+  # ========================================
+  summary:
+    name: Résumé du Pipeline
+    runs-on: ubuntu-latest
+    needs: [build-scan-push-frontend, build-scan-push-backend]
+    if: always()
+
+    steps:
+      - name:  Résumé complet
+        run: |
+          echo "========================================="
+          echo " PIPELINE CI/CD TERMINÉ"
+          echo "========================================="
+          echo ""
+          echo "📦 Images publiées :"
+          echo "   - matiguida/image:frontend-latest"
+          echo "   - matiguida/image:backend-latest"
+          echo ""
+          echo "🔍 Rapports de sécurité :"
+          echo "   - Téléchargez les rapports dans l'onglet Artifacts"
+          echo ""
+          echo "========================================="
